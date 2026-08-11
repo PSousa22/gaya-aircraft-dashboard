@@ -1,0 +1,1316 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Terra-Aeronave — Gaia Flight Dynamics v3 (Sistema Não-Linear)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+
+  :root {
+    --bg:        #080c10;
+    --panel:     #0b1118;
+    --border:    #1a2d3a;
+    --hud:       #00e5ff;
+    --hud-dim:   #007a8a;
+    --roll:      #39ff8f;   /* verde carbono */
+    --pitch:     #4db8ff;   /* azul radiativo/térmico */
+    --yaw:       #c77dff;   /* roxo mineral/biosfera */
+    --warn:      #ff4060;
+    --warn-dim:  #7a1020;
+    --text:      #d0e8f0;
+    --text-dim:  #4a6a7a;
+    --gold:      #ffd560;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+  }
+
+  /* ── HEADER ─────────────────────────────────── */
+  header {
+    padding: 18px 32px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .logo {
+    font-family: 'Orbitron', monospace;
+    font-weight: 900;
+    font-size: 1.3rem;
+    color: var(--hud);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .logo span { color: var(--roll); }
+  .subtitle {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+  .status-bar {
+    margin-left: auto;
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    letter-spacing: 0.12em;
+  }
+  .status-bar b { color: var(--hud); }
+
+  /* ── MAIN GRID ───────────────────────────────── */
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 260px 1fr;
+    grid-template-rows: auto 1fr auto;
+    gap: 0;
+    padding: 0;
+  }
+
+  /* ── ATTITUDE INDICATOR (centro) ─────────────── */
+  .attitude-wrap {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 12px;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    gap: 14px;
+  }
+
+  .attitude-label {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.2em;
+    color: var(--hud-dim);
+    text-transform: uppercase;
+  }
+
+  #attitude-canvas {
+    display: block;
+    border-radius: 50%;
+    box-shadow: 0 0 0 3px var(--border), 0 0 28px rgba(0,229,255,0.12);
+  }
+
+  .balance-readout {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    text-align: center;
+    line-height: 1.7;
+  }
+  .balance-readout b { color: var(--text); }
+
+  /* ── EIXO PANELS ─────────────────────────────── */
+  .axis-panel {
+    padding: 28px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .axis-panel.left { border-right: 1px solid var(--border); }
+  .axis-panel.right { border-left: 0; }
+
+  .axis-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .axis-icon {
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    border: 2px solid;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+  }
+  .axis-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .axis-subtitle {
+    font-size: 0.62rem;
+    color: var(--text-dim);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  /* FLUXOS dentro de cada painel */
+  .flux-list { display: flex; flex-direction: column; gap: 10px; }
+
+  .flux-item {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 12px;
+    position: relative;
+    overflow: hidden;
+  }
+  .flux-item::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+  }
+  .flux-name {
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    margin-bottom: 5px;
+  }
+  .flux-bar-wrap {
+    height: 6px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .flux-bar {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+  }
+  .flux-meta {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+    font-size: 0.62rem;
+    color: var(--text-dim);
+  }
+
+  /* ESTABILIDADE */
+  .stability-gauge { margin-top: 4px; }
+  .stability-label {
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .stability-label b { font-size: 0.8rem; }
+  .gauge-track {
+    height: 8px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+  }
+  .gauge-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.4s ease;
+  }
+
+  .surface-tag {
+    font-size: 0.62rem;
+    letter-spacing: 0.1em;
+    border: 1px solid;
+    border-radius: 3px;
+    display: inline-block;
+    padding: 2px 8px;
+    text-transform: uppercase;
+    opacity: 0.7;
+  }
+
+  /* ── SALA DE MÁQUINAS (engine room: fase 3D + série temporal) ── */
+  .engine-room {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: 1.1fr 1fr 260px;
+    gap: 0;
+  }
+  .engine-panel {
+    padding: 20px 22px;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+  }
+  .engine-panel:last-child { border-right: none; }
+  .engine-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--hud);
+  }
+  .engine-caption {
+    font-size: 0.62rem;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+  canvas#phase3d-canvas, canvas#timeseries-canvas {
+    width: 100%;
+    height: 230px;
+    display: block;
+    background: radial-gradient(ellipse at 50% 20%, rgba(0,229,255,0.05), transparent 70%);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  .legend-row { display:flex; gap:14px; flex-wrap:wrap; font-size:0.62rem; color:var(--text-dim); }
+  .legend-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; vertical-align:middle; }
+
+  /* PAINEL DE ESTABILIDADE GLOBAL */
+  .s-big-wrap { text-align:center; }
+  .s-big-num {
+    font-family:'Orbitron', monospace;
+    font-size: 2.6rem;
+    font-weight: 900;
+    line-height: 1;
+    transition: color 0.4s ease;
+  }
+  .s-big-label {
+    font-size: 0.6rem;
+    letter-spacing: 0.18em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+  .margin-box {
+    margin-top: 14px;
+    padding: 10px 12px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.66rem;
+    line-height: 1.7;
+  }
+  .margin-box .mval { font-family:'Orbitron',monospace; font-size:0.95rem; }
+
+  .event-log {
+    margin-top: 10px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 0.62rem;
+    line-height: 1.6;
+    height: 108px;
+    overflow-y: auto;
+  }
+  .event-log div { border-bottom: 1px dashed rgba(255,255,255,0.05); padding: 2px 0; }
+  .event-log div:last-child { border-bottom:none; }
+  .event-log::-webkit-scrollbar { width: 5px; }
+  .event-log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ── DECK DE CONTROLE (manetes) ─────────────── */
+  .control-deck {
+    border-top: 1px solid var(--border);
+    padding: 16px 32px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .deck-row {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+  }
+  .manete {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1 1 260px;
+    min-width: 240px;
+  }
+  .manete label {
+    font-size: 0.66rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    white-space: nowrap;
+    min-width: 118px;
+  }
+  input[type=range] {
+    -webkit-appearance: none;
+    flex: 1;
+    height: 6px;
+    background: linear-gradient(to right, var(--roll) 0%, var(--warn) 100%);
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--warn);
+    border: 2px solid var(--bg);
+    box-shadow: 0 0 8px var(--warn);
+  }
+  input[type=range].noise-slider {
+    background: linear-gradient(to right, var(--hud-dim) 0%, var(--hud) 100%);
+  }
+  input[type=range].noise-slider::-webkit-slider-thumb { background: var(--hud); box-shadow: 0 0 8px var(--hud); }
+
+  .manete-readout {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--warn);
+    min-width: 100px;
+    text-align: right;
+  }
+  .manete-real {
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    min-width: 90px;
+  }
+
+  .deck-buttons {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .btn {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 9px 14px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .btn:hover { border-color: var(--hud); color: var(--hud); }
+  .btn.shock-volcano:hover { border-color: var(--gold); color: var(--gold); }
+  .btn.shock-enso:hover { border-color: var(--pitch); color: var(--pitch); }
+  .btn.reset:hover { border-color: var(--warn); color: var(--warn); }
+  .btn.active { border-color: var(--hud); color: var(--hud); background: rgba(0,229,255,0.08); }
+  .speed-group { display:flex; gap:4px; margin-left: auto; }
+  .speed-group .btn { padding: 8px 10px; }
+
+  /* ── FOOTER ─────────────────────────────────── */
+  footer {
+    padding: 10px 32px;
+    border-top: 1px solid var(--border);
+    font-size: 0.62rem;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* ── CORES POR EIXO ──────────────────────────── */
+  .c-roll  { color: var(--roll); }
+  .c-pitch { color: var(--pitch); }
+  .c-yaw   { color: var(--yaw); }
+  .c-warn  { color: var(--warn); }
+  .c-gold  { color: var(--gold); }
+
+  .b-roll  { border-color: var(--roll);  }
+  .b-pitch { border-color: var(--pitch); }
+  .b-yaw   { border-color: var(--yaw);   }
+
+  .flux-item.roll::before  { background: var(--roll); }
+  .flux-item.pitch::before { background: var(--pitch); }
+  .flux-item.yaw::before   { background: var(--yaw); }
+  .flux-item.warn::before  { background: var(--warn); }
+
+  .flux-bar.roll  { background: var(--roll); }
+  .flux-bar.pitch { background: var(--pitch); }
+  .flux-bar.yaw   { background: var(--yaw); }
+  .flux-bar.warn  { background: var(--warn); }
+
+  .gauge-fill.roll  { background: linear-gradient(to right, var(--roll), #1aff6a); }
+  .gauge-fill.pitch { background: linear-gradient(to right, var(--pitch), #00aaff); }
+  .gauge-fill.yaw   { background: linear-gradient(to right, var(--yaw), #9b00ff); }
+  .gauge-fill.master{ background: linear-gradient(to right, var(--hud), var(--roll)); }
+
+  /* scan-line subtle */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg, transparent, transparent 2px,
+      rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px
+    );
+    pointer-events: none;
+    z-index: 999;
+  }
+
+  @media (max-width: 980px) {
+    main { grid-template-columns: 1fr; grid-template-rows: auto; }
+    .attitude-wrap { grid-column: 1; grid-row: auto; border-left:none; border-right:none; border-top:1px solid var(--border); border-bottom:1px solid var(--border);}
+    .axis-panel.left, .axis-panel.right { border:none; border-top: 1px solid var(--border); }
+    .engine-room { grid-template-columns: 1fr; }
+    .engine-panel { border-right:none; border-top:1px solid var(--border); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">TERRA<span>NAV</span> — Gaia Flight Dynamics</div>
+  <div class="subtitle">Simulador Não-Linear · Espaço de Estados Acoplado · Ẋ = f(X, U, D)</div>
+  <div class="status-bar" id="status-bar">CO₂: <b>422,8 ppm</b> &nbsp;|&nbsp; ΔT: <b>+1,52 °C (2024)</b> &nbsp;|&nbsp; ORÇAMENTO 1,5°C: <b>~3 anos</b></div>
+</header>
+
+<main>
+
+  <!-- ── ROLL: EIXO DO CARBONO (x2) ────────────── -->
+  <div class="axis-panel left" id="panel-roll">
+    <div class="axis-header">
+      <div class="axis-icon b-roll c-roll" style="border-color:var(--roll)">↻</div>
+      <div>
+        <div class="axis-title c-roll">Roll — Estado x₂ (Carbono Ativo)</div>
+        <div class="axis-subtitle">Ciclo do Carbono · Ailerons: Fotossíntese</div>
+      </div>
+    </div>
+
+    <div style="font-size:0.7rem; color:var(--text-dim); line-height:1.6;">
+      O eixo de roll rastreia o estoque de <b style="color:var(--roll)">carbono ativo</b> (x₂) em
+      relação ao equilíbrio holocênico. Emissões fósseis (manete u₁) o alimentam; o sumidouro
+      biosférico o drena — mas o sumidouro satura e colapsa quando a integridade da biosfera
+      (x₃) cai, criando um acoplamento não-linear entre os três eixos.
+    </div>
+
+    <div class="flux-list" id="flux-roll">
+      <div class="flux-item roll">
+        <div class="flux-name">☀ Sol → Florestas &amp; Fitoplâncton <span class="surface-tag b-roll c-roll">AILERON ↑</span></div>
+        <div class="flux-bar-wrap"><div class="flux-bar roll" id="bar-r1" style="width:100%"></div></div>
+        <div class="flux-meta"><span>Fotossíntese bruta terrestre + marinha (GPP)</span><span id="val-r1">134 PgC/ano</span></div>
+      </div>
+      <div class="flux-item roll">
+        <div class="flux-name">🌿 Florestas → Atmosfera <span class="surface-tag b-roll c-roll">AILERON ↓</span></div>
+        <div class="flux-bar-wrap"><div class="flux-bar roll" id="bar-r2" style="width:89%"></div></div>
+        <div class="flux-meta"><span>Respiração autotrófica + decomposição heterotrófica</span><span id="val-r2">~119 PgC/ano</span></div>
+      </div>
+      <div class="flux-item roll">
+        <div class="flux-name">🔬 Sumidouro Biosférico (não-linear, satura com x₃)</div>
+        <div class="flux-bar-wrap"><div class="flux-bar roll" id="bar-r3" style="width:37%"></div></div>
+        <div class="flux-meta"><span>Captura líquida oceano+solo · f(x₃, x₂)</span><span id="val-r3">— PgC/ano</span></div>
+      </div>
+      <div class="flux-item warn" id="item-r4">
+        <div class="flux-name c-warn">⚠ Tecnosfera → Atmosfera <span class="surface-tag" style="border-color:var(--warn);color:var(--warn)">MANETE u₁</span></div>
+        <div class="flux-bar-wrap"><div class="flux-bar warn" id="bar-r4" style="width:8%"></div></div>
+        <div class="flux-meta"><span>Emissões fósseis + cimento (baseline 2024 + Δ manete)</span><span id="val-r4">10,3 GtC/ano</span></div>
+      </div>
+    </div>
+
+    <div class="stability-gauge">
+      <div class="stability-label"><span>Estabilidade local (x₂ → 0)</span><b id="stab-roll-val" class="c-roll">92%</b></div>
+      <div class="gauge-track"><div class="gauge-fill roll" id="gauge-roll" style="width:92%"></div></div>
+    </div>
+  </div>
+
+  <!-- ── CENTRO: ATTITUDE INDICATOR ────────────── -->
+  <div class="attitude-wrap">
+    <div class="attitude-label">Indicador de Atitude Planetária</div>
+    <canvas id="attitude-canvas" width="220" height="220"></canvas>
+    <div class="balance-readout" id="balance-readout">
+      <b>Roll</b> (x₂ Carbono): <span id="br-roll">+0.00</span><br>
+      <b>Pitch</b> (x₁ Forçante Δ): <span id="br-pitch">+0.00</span><br>
+      <b>Yaw</b> (1−x₃ Biosfera): <span id="br-yaw">+0.00</span><br>
+      <br>
+      <span style="color:var(--text-dim); font-size:0.65rem;">TEMPO DE SIMULAÇÃO (Ẋ = AX+BU+D)</span><br>
+      <span id="br-time" class="c-warn" style="font-family:'Orbitron',monospace; font-size:1rem;">t=0.0</span>
+    </div>
+    <div class="attitude-label" id="flight-status">✈ VOO ESTÁVEL</div>
+  </div>
+
+  <!-- ── PITCH: EIXO RADIATIVO/TÉRMICO (x1) ────── -->
+  <div class="axis-panel right" id="panel-pitch">
+    <div class="axis-header">
+      <div class="axis-icon b-pitch c-pitch">⇅</div>
+      <div>
+        <div class="axis-title c-pitch">Pitch — Estado x₁ (Balanço Radiativo)</div>
+        <div class="axis-subtitle">Ciclo Térmico &amp; Hidrológico · Leme: Evaporação</div>
+      </div>
+    </div>
+
+    <div style="font-size:0.7rem; color:var(--text-dim); line-height:1.6;">
+      O eixo de pitch é o desvio radiativo (ΔF) em relação ao Holoceno. Carbono (x₂) o empurra
+      para cima; o amortecimento de Planck o traz de volta — mas esse amortecimento também
+      depende de x₃: quanto mais degradada a biosfera, menor o amortecimento e maior o
+      acoplamento (retroalimentação positiva) — termo −k·(1−x₃)·x₁.
+    </div>
+
+    <div class="flux-list">
+      <div class="flux-item pitch">
+        <div class="flux-name">🌊 Oceanos → Atmosfera <span class="surface-tag b-pitch c-pitch">ELEVADOR ↑</span></div>
+        <div class="flux-bar-wrap"><div class="flux-bar pitch" id="bar-p1" style="width:100%"></div></div>
+        <div class="flux-meta"><span>Evaporação oceânica — maior sumidouro térmico</span><span id="val-p1">~425 Sv-eq</span></div>
+      </div>
+      <div class="flux-item pitch">
+        <div class="flux-name">🌧 Atmosfera → Solo/Oceanos <span class="surface-tag b-pitch c-pitch">ELEVADOR ↓</span></div>
+        <div class="flux-bar-wrap"><div class="flux-bar pitch" id="bar-p2" style="width:92%"></div></div>
+        <div class="flux-meta"><span>Precipitação global</span><span id="val-p2">~390 Sv-eq</span></div>
+      </div>
+      <div class="flux-item pitch">
+        <div class="flux-name">🌳 Florestas → Atmosfera (degrada com x₃)</div>
+        <div class="flux-bar-wrap"><div class="flux-bar pitch" id="bar-p3" style="width:15%"></div></div>
+        <div class="flux-meta"><span>Transpiração (rios voadores)</span><span id="val-p3">~62 Sv-eq</span></div>
+      </div>
+      <div class="flux-item warn" id="item-p4">
+        <div class="flux-name c-warn">⚠ Tecnosfera → Florestas <span class="surface-tag" style="border-color:var(--warn);color:var(--warn)">MANETE u₂</span></div>
+        <div class="flux-bar-wrap"><div class="flux-bar warn" id="bar-p4" style="width:5%"></div></div>
+        <div class="flux-meta"><span>Desmatamento (baseline 2024 + Δ manete)</span><span id="val-p4">6,7 Mha/ano</span></div>
+      </div>
+    </div>
+
+    <div class="stability-gauge">
+      <div class="stability-label"><span>Estabilidade local (x₁ → 0)</span><b id="stab-pitch-val" class="c-pitch">88%</b></div>
+      <div class="gauge-track"><div class="gauge-fill pitch" id="gauge-pitch" style="width:88%"></div></div>
+    </div>
+  </div>
+
+  <!-- ── YAW: EIXO DA BIOSFERA / MINERAL (x3, biestável) ─────── -->
+  <div style="grid-column:1/-1; border-top:1px solid var(--border); display:grid; grid-template-columns:1fr 260px 1fr; min-height:0">
+
+    <div class="axis-panel left" style="border-right:1px solid var(--border)">
+      <div class="axis-header">
+        <div class="axis-icon b-yaw c-yaw">⟳</div>
+        <div>
+          <div class="axis-title c-yaw">Yaw — Estado x₃ (Integridade Biosférica)</div>
+          <div class="axis-subtitle">Ciclo Mineral &amp; Tecnosfera · Leme: Solo</div>
+        </div>
+      </div>
+
+      <div style="font-size:0.7rem; color:var(--text-dim); line-height:1.6;">
+        Este é o eixo <b style="color:var(--yaw)">biestável</b> do sistema: x₃=1 (saudável) e
+        x₃=0 (colapsado) são ambos pontos fixos estáveis de ẋ₃ = r·x₃(1−x₃)(x₃−θ). O limiar
+        instável θ sobe com aquecimento (x₁), desmatamento (u₂) e mineração (u₃) — quando θ
+        ultrapassa x₃, o sistema tomba (basculamento / <i>tipping point</i>) para o atrator
+        colapsado, de forma rápida e, na prática, irreversível pela simples remoção da pressão.
+      </div>
+
+      <div class="flux-list">
+        <div class="flux-item yaw">
+          <div class="flux-name">⛰ Solo → Florestas (degrada com x₃) <span class="surface-tag b-yaw c-yaw">LEME NEUTRO</span></div>
+          <div class="flux-bar-wrap"><div class="flux-bar yaw" id="bar-y1" style="width:67%"></div></div>
+          <div class="flux-meta"><span>Nutrientes minerais — absorção radicular</span><span id="val-y1">30 PgC/ano</span></div>
+        </div>
+        <div class="flux-item yaw">
+          <div class="flux-name">🦠 Integridade Biosférica x₃ (0–1)</div>
+          <div class="flux-bar-wrap"><div class="flux-bar yaw" id="bar-y2" style="width:90%"></div></div>
+          <div class="flux-meta"><span>Estado interno — atrator Holoceno vs. Colapso</span><span id="val-y2">x₃ = 0,90</span></div>
+        </div>
+        <div class="flux-item warn" id="item-y3">
+          <div class="flux-name c-warn">⚠ Solo → Tecnosfera <span class="surface-tag" style="border-color:var(--warn);color:var(--warn)">MANETE u₃</span></div>
+          <div class="flux-bar-wrap"><div class="flux-bar warn" id="bar-y3" style="width:4%"></div></div>
+          <div class="flux-meta"><span>Extração fóssil/mineral (baseline 2024 + Δ manete)</span><span id="val-y3">1,3 GtC/ano</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- célula central — margem de basculamento -->
+    <div style="border-left:1px solid var(--border); border-right:1px solid var(--border); padding:20px 14px;">
+      <div class="attitude-label" style="margin-bottom:12px">Margem de Basculamento</div>
+      <div class="margin-box">
+        x₃ (atual): <span class="mval c-yaw" id="mb-x3">0.900</span><br>
+        θ (limiar instável): <span class="mval c-warn" id="mb-theta">0.580</span><br>
+        Margem (x₃−θ): <span class="mval" id="mb-margin" style="color:var(--roll)">+0.320</span>
+      </div>
+      <div style="font-size:0.62rem; color:var(--text-dim); line-height:1.6; margin-top:10px;">
+        Enquanto x₃ &gt; θ, o sistema é puxado de volta ao Holoceno (x₃→1). Se a margem cruzar
+        zero, x₃ é puxado para o colapso (x₃→0) — o basculamento em si.
+      </div>
+      <br>
+      <div class="attitude-label" style="margin-bottom:8px">Orçamento de Carbono Restante</div>
+      <div style="font-size:0.66rem; line-height:2.1; color:var(--text-dim)">
+        <span class="c-warn">▪</span> 1,5 °C &nbsp;&nbsp; ~130 GtCO₂<br>
+        <span style="color:var(--gold)">▪</span> 1,7 °C &nbsp;&nbsp; ~525 GtCO₂<br>
+        <span class="c-pitch">▪</span> 2,0 °C &nbsp; ~1055 GtCO₂<br>
+      </div>
+    </div>
+
+    <!-- painel direito yaw -->
+    <div class="axis-panel" style="border-left:0; padding-top:28px">
+      <div class="stability-gauge" style="margin-top:8px">
+        <div class="stability-label"><span>Estabilidade Yaw (x₃)</span><b id="stab-yaw-val" class="c-yaw">95%</b></div>
+        <div class="gauge-track"><div class="gauge-fill yaw" id="gauge-yaw" style="width:95%"></div></div>
+      </div>
+
+      <div style="font-size:0.68rem; color:var(--text-dim); line-height:1.7; margin-top:14px">
+        <b style="color:var(--text)">Referência real (2024–2025):</b><br><br>
+        <span class="c-warn">▪</span> Gelo Ártico multianual<br>&nbsp;&nbsp;&gt;95% perdido desde 1980<br><br>
+        <span class="c-warn">▪</span> Desmatamento 2024: 6,7 Mha<br>&nbsp;&nbsp;recorde, +80% vs. 2023<br><br>
+        <span class="c-warn">▪</span> Groenlândia 2025<br>&nbsp;&nbsp;129 Gt — 29º ano de perda<br><br>
+        <span class="c-warn">Manetes u₂, u₃</span> deslocam θ<br>
+        e aproximam o sistema do<br>
+        ponto de basculamento.
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ── SALA DE MÁQUINAS: FASE 3D + SÉRIE TEMPORAL + S GLOBAL ── -->
+<div class="engine-room">
+  <div class="engine-panel">
+    <div class="engine-title">Trajetória no Espaço de Estados (x₁, x₂, x₃)</div>
+    <canvas id="phase3d-canvas" height="230"></canvas>
+    <div class="legend-row">
+      <span><span class="legend-dot" style="background:var(--hud)"></span>Trajetória</span>
+      <span><span class="legend-dot" style="background:var(--gold)"></span>Atrator Holoceno (0,0,1)</span>
+      <span><span class="legend-dot" style="background:var(--warn)"></span>Atrator Colapso (·,·,0)</span>
+      <span><span class="legend-dot" style="background:var(--roll)"></span>Estado atual</span>
+    </div>
+    <div class="engine-caption">Eixo vertical = x₃ (biosfera, "altitude"). Plano horizontal = (x₁ forçante, x₂ carbono). Projeção isométrica fixa.</div>
+  </div>
+
+  <div class="engine-panel">
+    <div class="engine-title">Série Temporal — Estados &amp; Índice de Estabilidade</div>
+    <canvas id="timeseries-canvas" height="230"></canvas>
+    <div class="legend-row">
+      <span><span class="legend-dot" style="background:var(--pitch)"></span>x₁ Δ Radiativo</span>
+      <span><span class="legend-dot" style="background:var(--roll)"></span>x₂ Carbono</span>
+      <span><span class="legend-dot" style="background:var(--yaw)"></span>x₃ Biosfera</span>
+      <span><span class="legend-dot" style="background:var(--hud)"></span>S (estabilidade)</span>
+    </div>
+    <div class="engine-caption">Janela rolante · escala normalizada · reinicia ao apertar "Reiniciar".</div>
+  </div>
+
+  <div class="engine-panel">
+    <div class="s-big-wrap">
+      <div class="s-big-num" id="s-big-num" style="color:var(--roll)">91</div>
+      <div class="s-big-label">Índice de Estabilidade Global S = e^(−‖X−X₀‖)</div>
+      <div class="gauge-track" style="margin-top:10px"><div class="gauge-fill master" id="gauge-master" style="width:91%"></div></div>
+    </div>
+    <div class="engine-title" style="margin-top:14px">Log de Eventos</div>
+    <div class="event-log" id="event-log"><div>Sistema inicializado — X₀ ≈ estado 2024.</div></div>
+  </div>
+</div>
+
+<!-- ── DECK DE CONTROLE ───────────────────────── -->
+<div class="control-deck">
+  <div class="deck-row">
+    <div class="manete">
+      <label>u₁ Emissões Fósseis</label>
+      <input type="range" id="u1" min="0" max="100" value="0" step="1">
+      <span class="manete-readout" id="u1-readout">+0%</span>
+      <span class="manete-real" id="u1-real">10,3 GtC/ano</span>
+    </div>
+    <div class="manete">
+      <label>u₂ Uso da Terra</label>
+      <input type="range" id="u2" min="0" max="100" value="0" step="1">
+      <span class="manete-readout" id="u2-readout">+0%</span>
+      <span class="manete-real" id="u2-real">6,7 Mha/ano</span>
+    </div>
+    <div class="manete">
+      <label>u₃ Extração Mineral</label>
+      <input type="range" id="u3" min="0" max="100" value="0" step="1">
+      <span class="manete-readout" id="u3-readout">+0%</span>
+      <span class="manete-real" id="u3-real">1,3 GtC/ano</span>
+    </div>
+  </div>
+  <div class="deck-row">
+    <div class="manete">
+      <label>Ruído de Fundo σ (d)</label>
+      <input type="range" class="noise-slider" id="noise" min="0" max="100" value="0" step="1">
+      <span class="manete-readout" id="noise-readout" style="color:var(--hud)">0%</span>
+      <span class="manete-real">variabilidade climática ambiente</span>
+    </div>
+    <div class="deck-buttons">
+      <button class="btn shock-volcano" id="btn-volcano" title="Impulso de Dirac: aerossóis vulcânicos resfriam x₁ instantaneamente">🌋 Choque: Vulcanismo</button>
+      <button class="btn shock-enso" id="btn-enso" title="Impulso de Dirac: El Niño aquece x₁, sobrecarrega x₂, estressa x₃">🌊 Choque: ENSO / El Niño</button>
+      <button class="btn reset" id="btn-reset">↺ Reiniciar (Holoceno)</button>
+    </div>
+    <div class="speed-group">
+      <button class="btn active" data-speed="1">1×</button>
+      <button class="btn" data-speed="4">4×</button>
+      <button class="btn" data-speed="12">12×</button>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <span>MODELO GAIA v3 — Sistema Dinâmico Não-Linear (RK4, JS nativo, sem backend)</span>
+  <span>Fontes calibração inicial: Global Carbon Budget 2025 · IGCC 2025 (Forster et al.) · NOAA Arctic 2025 · WMO 2025 · IAP/CAS OHC 2026 · WRI GFW 2026</span>
+  <span id="clock"></span>
+</footer>
+
+<script>
+// ══════════════════════════════════════════════════════
+//  MOTOR DE DINÂMICA NÃO-LINEAR — gaia_dynamics
+//  Estado X = [x1, x2, x3] = [ΔF (forçante radiativa),
+//              C (carbono ativo), B (integridade biosférica)]
+//  Equilíbrio Holoceno: X0 = (0, 0, 1)
+//
+//  ẋ1 = kc·x2 − kdamp·x1 − kfb·(1−x3)·x1 − eps1·x1³
+//       (carbono força ΔF; amortecimento de Planck; a amplificação
+//        cresce quando a biosfera perde capacidade de buffer)
+//  ẋ2 = u1 + 0.4·u3 − sink(x3,x2) − eps2·x2³
+//       sink = ksink·x3·x2 / (1 + x2²/Ksat)   (sumidouro saturável,
+//        proporcional à saúde biosférica — Michaelis-Menten-like)
+//  ẋ3 = r·x3·(1−x3)·(x3−θ)                    (cúbica biestável —
+//        x3=0 e x3=1 são SEMPRE pontos fixos; θ é o limiar instável)
+//  θ  = θ0 + c1·max(x1,0) + c1b·max(x2,0) + c2·u2 + c3·u3
+//       (aquecimento, carga de carbono, uso da terra e mineração
+//        elevam o limiar — reduzindo a bacia de atração do estado
+//        saudável até ela desaparecer: bifurcação sela-nó)
+// ══════════════════════════════════════════════════════
+const P = {
+  kc: 0.35, kdamp: 0.6, kfb: 0.35, eps1: 0.25,
+  ksink: 1.1, Ksat: 2.5, eps2: 0.05,
+  r: 0.10, theta0: 0.55, c1: 0.28, c1b: 0.06, c2: 0.35, c3: 0.20,
+};
+const X0 = [0, 0, 1]; // equilíbrio Holoceno
+const baselineU = [0.08, 0.07, 0.03]; // pressão antrópica real de referência (2024)
+const uExtraScale = 0.9; // manete 0–100% mapeia para +0 a +0.9 de pressão extra
+
+function thetaCurrent(x1, u2, u3) {
+  let th = P.theta0 + P.c1*Math.max(x1,0) + P.c1b*Math.max(0,0) + P.c2*u2 + P.c3*u3;
+  return Math.min(th, 0.96);
+}
+
+function derivative(x, u, d) {
+  const x1=x[0], x2=x[1], x3=x[2];
+  const u1=u[0], u2=u[1], u3=u[2];
+  const dx1 = P.kc*x2 - P.kdamp*x1 - P.kfb*(1-Math.max(x3,0))*x1 - P.eps1*Math.pow(x1,3);
+  const sink = P.ksink * Math.max(x3,0) * x2 / (1 + (x2*x2)/P.Ksat);
+  const dx2 = u1 + 0.4*u3 - sink - P.eps2*Math.pow(x2,3);
+  let theta = P.theta0 + P.c1*Math.max(x1,0) + P.c1b*Math.max(x2,0) + P.c2*u2 + P.c3*u3;
+  theta = Math.min(theta, 0.96);
+  const dx3 = P.r*x3*(1-x3)*(x3-theta);
+  return [dx1+d[0], dx2+d[1], dx3+d[2]];
+}
+
+function rk4Step(x, u, dt, d) {
+  const k1 = derivative(x, u, d);
+  const xa = x.map((v,i)=>v+dt/2*k1[i]);
+  const k2 = derivative(xa, u, d);
+  const xb = x.map((v,i)=>v+dt/2*k2[i]);
+  const k3 = derivative(xb, u, d);
+  const xc = x.map((v,i)=>v+dt*k3[i]);
+  const k4 = derivative(xc, u, d);
+  return x.map((v,i)=>v + dt/6*(k1[i]+2*k2[i]+2*k3[i]+k4[i]));
+}
+
+function stabilityIndex(x) {
+  const dx = x.map((v,i)=>v-X0[i]);
+  const norm = Math.sqrt(dx[0]*dx[0]+dx[1]*dx[1]+dx[2]*dx[2]);
+  return Math.exp(-norm);
+}
+
+// gerador gaussiano (Box-Muller)
+function gauss() {
+  let u=0,v=0;
+  while(u===0) u=Math.random();
+  while(v===0) v=Math.random();
+  return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+}
+
+// ══════════════════════════════════════════════════════
+//  ESTADO DA SIMULAÇÃO
+// ══════════════════════════════════════════════════════
+let state = [0.15, 0.35, 0.90]; // estado inicial ~ 2024
+let simTime = 0;
+const dt = 0.02;
+let speedSteps = 1 * 4; // passos RK4 por frame (base 4 = 1x)
+let pendingImpulse = [0,0,0];
+let wasTipped = false;
+let history = []; // {t, x1,x2,x3,S}
+const HISTORY_MAX = 500;
+let phaseTrail = []; // pontos recentes para trilha 3D
+const TRAIL_MAX = 260;
+
+function currentU() {
+  const u1v = parseInt(document.getElementById('u1').value)/100;
+  const u2v = parseInt(document.getElementById('u2').value)/100;
+  const u3v = parseInt(document.getElementById('u3').value)/100;
+  return [
+    baselineU[0] + u1v*uExtraScale,
+    baselineU[1] + u2v*uExtraScale,
+    baselineU[2] + u3v*uExtraScale,
+  ];
+}
+
+function logEvent(msg, cls) {
+  const log = document.getElementById('event-log');
+  const div = document.createElement('div');
+  div.innerHTML = '<span style="color:var(--text-dim)">t=' + simTime.toFixed(1) + '</span> — ' + (cls?('<span class="'+cls+'">'+msg+'</span>'):msg);
+  log.insertBefore(div, log.firstChild);
+  while (log.children.length > 40) log.removeChild(log.lastChild);
+}
+
+// ══════════════════════════════════════════════════════
+//  LOOP DE SIMULAÇÃO
+// ══════════════════════════════════════════════════════
+function stepSim() {
+  const u = currentU();
+  const noiseLevel = parseInt(document.getElementById('noise').value)/100;
+  const sigma = noiseLevel * 0.05;
+  for (let i=0;i<speedSteps;i++) {
+    let d = [0,0,0];
+    if (sigma > 0) {
+      d = [gauss()*sigma, gauss()*sigma, gauss()*sigma*0.5];
+    }
+    if (pendingImpulse[0]||pendingImpulse[1]||pendingImpulse[2]) {
+      state = state.map((v,idx)=>v+pendingImpulse[idx]);
+      pendingImpulse = [0,0,0];
+    }
+    state = rk4Step(state, u, dt, d);
+    simTime += dt;
+  }
+
+  const S = stabilityIndex(state);
+  const tipped = state[2] < 0.5;
+  if (tipped && !wasTipped) {
+    logEvent('⚠ PONTO DE BASCULAMENTO ATINGIDO — x₃ cruzou o limiar instável.', 'c-warn');
+  }
+  if (!tipped && wasTipped && state[2] > 0.55) {
+    logEvent('✓ Recuperação para a bacia do Holoceno.', 'c-roll');
+  }
+  wasTipped = tipped;
+
+  history.push({t: simTime, x1: state[0], x2: state[1], x3: state[2], S});
+  if (history.length > HISTORY_MAX) history.shift();
+  phaseTrail.push([state[0], state[1], state[2]]);
+  if (phaseTrail.length > TRAIL_MAX) phaseTrail.shift();
+}
+
+// ══════════════════════════════════════════════════════
+//  UI: BARRAS, GAUGES, LEITURAS
+// ══════════════════════════════════════════════════════
+function set(id, pct) {
+  const el = document.getElementById(id);
+  if (el) el.style.width = Math.max(0, Math.min(100, pct)) + '%';
+}
+function setText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+
+function updateUI() {
+  const [x1,x2,x3] = state;
+  const S = stabilityIndex(state);
+  const theta = thetaCurrent(x1, currentU()[1], currentU()[2]);
+  const margin = x3 - theta;
+
+  // ── barras Roll (carbono) ──
+  const r1p = 100 * (0.30 + 0.70*Math.max(x3,0));
+  const sinkVal = P.ksink * Math.max(x3,0) * x2 / (1 + (x2*x2)/P.Ksat);
+  set('bar-r1', r1p); set('bar-r2', 89);
+  set('bar-r3', Math.min(100, sinkVal*35));
+  const u1v = parseInt(document.getElementById('u1').value)/100;
+  const emissoes = 10.3 + u1v*7.7;
+  set('bar-r4', Math.min(100, (emissoes/18)*100));
+  setText('val-r1', (134*(0.30+0.70*Math.max(x3,0))).toFixed(0) + ' PgC/ano');
+  setText('val-r3', sinkVal.toFixed(2) + ' (índice sumidouro)');
+  setText('val-r4', emissoes.toFixed(1) + ' GtC/ano');
+
+  // ── barras Pitch (radiativo/térmico) ──
+  set('bar-p1', 100); set('bar-p2', 92);
+  set('bar-p3', Math.max(5, 100*Math.max(x3,0)*0.20));
+  const u2v = parseInt(document.getElementById('u2').value)/100;
+  const desmat = 6.7 + u2v*8.3;
+  set('bar-p4', Math.min(100, (desmat/15)*100));
+  setText('val-p3', (62*Math.max(x3,0)).toFixed(0) + ' Sv-eq');
+  setText('val-p4', desmat.toFixed(1) + ' Mha/ano');
+
+  // ── barras Yaw (biosfera/mineral) ──
+  set('bar-y1', 67*Math.max(x3,0));
+  set('bar-y2', 100*Math.max(0,Math.min(1,x3)));
+  const u3v = parseInt(document.getElementById('u3').value)/100;
+  const extracao = 1.3 + u3v*3.7;
+  set('bar-y3', Math.min(100, (extracao/5)*100));
+  setText('val-y2', 'x₃ = ' + x3.toFixed(3));
+  setText('val-y3', extracao.toFixed(1) + ' GtC/ano');
+
+  // ── manete readouts ──
+  setText('u1-readout', '+' + (u1v*100).toFixed(0) + '%');
+  setText('u1-real', emissoes.toFixed(1) + ' GtC/ano');
+  setText('u2-readout', '+' + (u2v*100).toFixed(0) + '%');
+  setText('u2-real', desmat.toFixed(1) + ' Mha/ano');
+  setText('u3-readout', '+' + (u3v*100).toFixed(0) + '%');
+  setText('u3-real', extracao.toFixed(1) + ' GtC/ano');
+  const noiseV = parseInt(document.getElementById('noise').value);
+  setText('noise-readout', noiseV + '%');
+
+  // ── estabilidades locais por eixo ──
+  const sRoll = Math.exp(-Math.abs(x2)/1.6) * 100;
+  const sPitch = Math.exp(-Math.abs(x1)/0.9) * 100;
+  const sYaw = Math.max(0, Math.min(1, x3)) * 100;
+  set('gauge-roll', sRoll); set('gauge-pitch', sPitch); set('gauge-yaw', sYaw);
+  setText('stab-roll-val', Math.round(sRoll)+'%');
+  setText('stab-pitch-val', Math.round(sPitch)+'%');
+  setText('stab-yaw-val', Math.round(sYaw)+'%');
+  document.getElementById('gauge-roll').style.background = sRoll<50 ? 'linear-gradient(to right, var(--warn), #ff8800)' : '';
+  document.getElementById('gauge-pitch').style.background = sPitch<50 ? 'linear-gradient(to right, var(--warn), #ff8800)' : '';
+  document.getElementById('gauge-yaw').style.background = sYaw<50 ? 'linear-gradient(to right, var(--warn), #ff8800)' : '';
+
+  // ── S global ──
+  const sBig = document.getElementById('s-big-num');
+  sBig.textContent = Math.round(S*100);
+  set('gauge-master', S*100);
+  sBig.style.color = S>0.7?'var(--roll)': S>0.4?'var(--gold)': S>0.15?'var(--warn)':'#ff0000';
+
+  // ── margem de basculamento ──
+  setText('mb-x3', x3.toFixed(3));
+  setText('mb-theta', theta.toFixed(3));
+  const marginEl = document.getElementById('mb-margin');
+  marginEl.textContent = (margin>=0?'+':'') + margin.toFixed(3);
+  marginEl.style.color = margin>0.15 ? 'var(--roll)' : margin>0 ? 'var(--gold)' : 'var(--warn)';
+
+  // ── attitude indicator ──
+  const rollDeg = Math.max(-60, Math.min(60, x2*15));
+  const pitchDeg = Math.max(-30, Math.min(30, x1*22));
+  const yawDeg = Math.max(0, Math.min(90, (1-Math.max(x3,0))*90));
+  drawAttitude(rollDeg, pitchDeg, yawDeg);
+  setText('br-roll', (x2>=0?'+':'') + x2.toFixed(2));
+  setText('br-pitch', (x1>=0?'+':'') + x1.toFixed(2));
+  setText('br-yaw', (1-x3>=0?'+':'') + (1-x3).toFixed(2));
+  setText('br-time', 't=' + simTime.toFixed(1));
+
+  // ── status de voo ──
+  const statusEl = document.getElementById('flight-status');
+  const sysEl = document.getElementById('status-bar');
+  if (S > 0.70) {
+    statusEl.textContent = '✈ VOO ESTÁVEL'; statusEl.style.color = 'var(--roll)';
+    sysEl.innerHTML = 'S: <b style="color:var(--roll)">'+Math.round(S*100)+'%</b> &nbsp;|&nbsp; MARGEM θ: <b>'+margin.toFixed(2)+'</b> &nbsp;|&nbsp; t=<b>'+simTime.toFixed(1)+'</b>';
+  } else if (S > 0.40) {
+    statusEl.textContent = '⚠ TURBULÊNCIA MODERADA'; statusEl.style.color = 'var(--gold)';
+    sysEl.innerHTML = 'SYS: <b style="color:var(--gold)">ATENÇÃO</b> &nbsp;|&nbsp; MARGEM θ: <b style="color:var(--gold)">'+margin.toFixed(2)+'</b>';
+  } else if (S > 0.15) {
+    statusEl.textContent = '⚠⚠ INSTABILIDADE CRÍTICA'; statusEl.style.color = 'var(--warn)';
+    sysEl.innerHTML = 'SYS: <b style="color:var(--warn)">CRÍTICO</b> &nbsp;|&nbsp; APROXIMANDO PONTO DE BASCULAMENTO';
+  } else {
+    statusEl.textContent = '🔴 STALL — COLAPSO BIOSFÉRICO (x₃≈0)'; statusEl.style.color = '#ff0000';
+    sysEl.innerHTML = '<b style="color:#ff0000">⚠ STALL ⚠ — ATRATOR COLAPSADO — RECUPERAÇÃO REQUER REMOÇÃO PROLONGADA DA PRESSÃO</b>';
+  }
+
+  drawPhase3D();
+  drawTimeseries();
+}
+
+// ══════════════════════════════════════════════════════
+//  ATTITUDE INDICATOR — canvas (mantido do v2)
+// ══════════════════════════════════════════════════════
+const canvas = document.getElementById('attitude-canvas');
+const ctx = canvas.getContext('2d');
+const W = 220, H = 220, cx = W/2, cy = H/2, R = 100;
+
+function drawAttitude(rollDeg, pitchDeg, yawDeg) {
+  ctx.clearRect(0, 0, W, H);
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI*2);
+  ctx.clip();
+
+  const pitchPx = pitchDeg * 1.4;
+  const rollRad = rollDeg * Math.PI / 180;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rollRad);
+  ctx.fillStyle = '#0a2a6e';
+  ctx.fillRect(-R*2, -R*2 - pitchPx, R*4, R*2);
+  ctx.fillStyle = '#3d1a04';
+  ctx.fillRect(-R*2, -pitchPx, R*4, R*2);
+  ctx.strokeStyle = '#ffd560';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-R*1.5, -pitchPx);
+  ctx.lineTo(R*1.5, -pitchPx);
+  ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(255,213,96,0.5)';
+  ctx.lineWidth = 1;
+  ctx.font = '9px Share Tech Mono, monospace';
+  ctx.fillStyle = 'rgba(255,213,96,0.6)';
+  for (let p = -30; p <= 30; p += 10) {
+    if (p === 0) continue;
+    const y = -pitchPx - p * 1.4;
+    const len = Math.abs(p) >= 20 ? 30 : 20;
+    ctx.beginPath();
+    ctx.moveTo(-len, y);
+    ctx.lineTo(len, y);
+    ctx.stroke();
+    ctx.fillText(p > 0 ? '+' + p : p, len + 3, y + 3);
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.strokeStyle = 'rgba(0,229,255,0.3)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(0, 0, R - 8, -Math.PI*0.75, -Math.PI*0.25);
+  ctx.stroke();
+  ctx.save();
+  ctx.rotate(rollRad);
+  ctx.beginPath();
+  ctx.moveTo(0, -(R-8));
+  ctx.lineTo(-5, -(R-18));
+  ctx.lineTo(5, -(R-18));
+  ctx.closePath();
+  ctx.fillStyle = '#ffd560';
+  ctx.fill();
+  ctx.restore();
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.strokeStyle = 'rgba(199,125,255,0.5)';
+  ctx.lineWidth = 1;
+  for (let a = 0; a < 360; a += 30) {
+    const rad = (a - yawDeg) * Math.PI/180;
+    ctx.save();
+    ctx.rotate(rad);
+    ctx.beginPath();
+    ctx.moveTo(0, -(R-1));
+    ctx.lineTo(0, -(R-7));
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.save();
+  ctx.rotate(-yawDeg * Math.PI/180);
+  ctx.fillStyle = '#c77dff';
+  ctx.font = 'bold 8px Orbitron, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('N', 0, -(R-10));
+  ctx.restore();
+  ctx.restore();
+
+  ctx.restore();
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI*2);
+  ctx.strokeStyle = '#1a3a4a';
+  ctx.lineWidth = 4;
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,229,255,0.4)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.strokeStyle = '#ffd560';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(-28, 0); ctx.lineTo(-8, 0);
+  ctx.moveTo(8, 0);   ctx.lineTo(28, 0);
+  ctx.moveTo(0, 8);   ctx.lineTo(0, 0);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0, 4, 0, Math.PI*2);
+  ctx.strokeStyle = '#ffd560';
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ══════════════════════════════════════════════════════
+//  FASE 3D — projeção isométrica simples em canvas
+//  eixo vertical = x3 (biosfera); plano = (x1, x2)
+// ══════════════════════════════════════════════════════
+const phaseCanvas = document.getElementById('phase3d-canvas');
+const phaseCtx = phaseCanvas.getContext('2d');
+
+function resizeCanvas(c) {
+  const rect = c.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const targetW = Math.max(1, Math.round(rect.width * dpr));
+  const targetH = Math.max(1, Math.round(rect.height * dpr));
+  if (c.width !== targetW || c.height !== targetH) {
+    c.width = targetW;
+    c.height = targetH;
+  }
+  const ctx2 = c.getContext('2d');
+  ctx2.setTransform(dpr,0,0,dpr,0,0);
+  return {w: rect.width, h: rect.height};
+}
+
+function iso(x1, x2, x3, dims) {
+  const scaleXY = 34, scaleZ = 90;
+  const isoX = (x1 - x2) * Math.cos(Math.PI/6);
+  const isoY = (x1 + x2) * Math.sin(Math.PI/6) - x3;
+  const originX = dims.w * 0.5;
+  const originY = dims.h * 0.78;
+  return [originX + isoX*scaleXY, originY + isoY*scaleZ*0.6 - (x3)*0];
+}
+
+function drawPhase3D() {
+  const dims = resizeCanvas(phaseCanvas);
+  phaseCtx.clearRect(0,0,dims.w,dims.h);
+
+  // piso de referência (x3 = 0, plano de colapso)
+  phaseCtx.strokeStyle = 'rgba(255,64,96,0.25)';
+  phaseCtx.lineWidth = 1;
+  phaseCtx.beginPath();
+  const floorPts = [[-2,-2,0],[2,-2,0],[2,2,0],[-2,2,0]];
+  floorPts.forEach((p,i)=>{
+    const [px,py] = iso(p[0],p[1],p[2],dims);
+    if (i===0) phaseCtx.moveTo(px,py); else phaseCtx.lineTo(px,py);
+  });
+  phaseCtx.closePath();
+  phaseCtx.stroke();
+
+  // eixo vertical guia (do colapso ao Holoceno)
+  phaseCtx.strokeStyle = 'rgba(255,213,96,0.25)';
+  phaseCtx.setLineDash([3,3]);
+  const [gx0,gy0] = iso(0,0,0,dims);
+  const [gx1,gy1] = iso(0,0,1,dims);
+  phaseCtx.beginPath(); phaseCtx.moveTo(gx0,gy0); phaseCtx.lineTo(gx1,gy1); phaseCtx.stroke();
+  phaseCtx.setLineDash([]);
+
+  // trilha da trajetória
+  if (phaseTrail.length > 1) {
+    for (let i=1;i<phaseTrail.length;i++) {
+      const alpha = i / phaseTrail.length;
+      const [ax,ay] = iso(phaseTrail[i-1][0],phaseTrail[i-1][1],phaseTrail[i-1][2],dims);
+      const [bx,by] = iso(phaseTrail[i][0],phaseTrail[i][1],phaseTrail[i][2],dims);
+      phaseCtx.strokeStyle = 'rgba(0,229,255,' + (0.08+0.5*alpha) + ')';
+      phaseCtx.lineWidth = 1.5;
+      phaseCtx.beginPath();
+      phaseCtx.moveTo(ax,ay); phaseCtx.lineTo(bx,by);
+      phaseCtx.stroke();
+    }
+  }
+
+  // atrator Holoceno
+  const [hx,hy] = iso(0,0,1,dims);
+  phaseCtx.fillStyle = '#ffd560';
+  phaseCtx.beginPath(); phaseCtx.arc(hx,hy,5,0,Math.PI*2); phaseCtx.fill();
+  phaseCtx.font = '9px Share Tech Mono, monospace';
+  phaseCtx.fillStyle = '#ffd560';
+  phaseCtx.fillText('Holoceno', hx+8, hy+3);
+
+  // atrator colapso (aprox., no ponto atual de x1,x2 projetado no piso)
+  const [cx3,cy3] = iso(state[0],state[1],0,dims);
+  phaseCtx.fillStyle = 'rgba(255,64,96,0.7)';
+  phaseCtx.beginPath(); phaseCtx.arc(cx3,cy3,4,0,Math.PI*2); phaseCtx.fill();
+  phaseCtx.fillStyle = 'rgba(255,64,96,0.8)';
+  phaseCtx.fillText('Colapso', cx3+7, cy3+3);
+
+  // estado atual
+  const [sx,sy] = iso(state[0],state[1],state[2],dims);
+  phaseCtx.fillStyle = '#39ff8f';
+  phaseCtx.shadowColor = '#39ff8f'; phaseCtx.shadowBlur = 8;
+  phaseCtx.beginPath(); phaseCtx.arc(sx,sy,6,0,Math.PI*2); phaseCtx.fill();
+  phaseCtx.shadowBlur = 0;
+}
+
+// ══════════════════════════════════════════════════════
+//  SÉRIE TEMPORAL — canvas
+// ══════════════════════════════════════════════════════
+const tsCanvas = document.getElementById('timeseries-canvas');
+const tsCtx = tsCanvas.getContext('2d');
+
+function drawTimeseries() {
+  const dims = resizeCanvas(tsCanvas);
+  tsCtx.clearRect(0,0,dims.w,dims.h);
+  if (history.length < 2) return;
+
+  const tMin = history[0].t, tMax = history[history.length-1].t;
+  const tSpan = Math.max(0.01, tMax - tMin);
+  const yMid = dims.h * 0.55, yScale = 30;
+  const sMargin = 18;
+
+  // linha zero
+  tsCtx.strokeStyle = 'rgba(255,255,255,0.08)';
+  tsCtx.beginPath(); tsCtx.moveTo(0,yMid); tsCtx.lineTo(dims.w,yMid); tsCtx.stroke();
+
+  function plot(key, color, scale, offsetFn) {
+    tsCtx.strokeStyle = color;
+    tsCtx.lineWidth = 1.6;
+    tsCtx.beginPath();
+    history.forEach((h,i) => {
+      const px = ((h.t - tMin)/tSpan) * dims.w;
+      const val = offsetFn ? offsetFn(h) : h[key];
+      const py = yMid - val*scale;
+      if (i===0) tsCtx.moveTo(px,py); else tsCtx.lineTo(px,py);
+    });
+    tsCtx.stroke();
+  }
+
+  plot('x1', '#4db8ff', yScale, h=>h.x1);
+  plot('x2', '#39ff8f', yScale*0.5, h=>h.x2);
+  plot('x3', '#c77dff', yScale*1.1, h=>h.x3-1);
+  plot('S', '#00e5ff', dims.h*0.42, h=>h.S-0.5);
+
+  tsCtx.fillStyle = 'rgba(255,255,255,0.35)';
+  tsCtx.font = '8px Share Tech Mono, monospace';
+  tsCtx.fillText('t=' + tMin.toFixed(0), 4, dims.h-4);
+  tsCtx.fillText('t=' + tMax.toFixed(0), dims.w-40, dims.h-4);
+}
+
+// ══════════════════════════════════════════════════════
+//  CONTROLES
+// ══════════════════════════════════════════════════════
+['u1','u2','u3','noise'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => {});
+});
+
+document.getElementById('btn-volcano').addEventListener('click', () => {
+  pendingImpulse = [pendingImpulse[0]-0.35, pendingImpulse[1]+0.10, pendingImpulse[2]+0];
+  logEvent('🌋 Vulcanismo — impulso de Dirac: ΔF ↓ (aerossóis), leve pulso de C.', 'c-gold');
+});
+document.getElementById('btn-enso').addEventListener('click', () => {
+  pendingImpulse = [pendingImpulse[0]+0.18, pendingImpulse[1]+0.30, pendingImpulse[2]-0.06];
+  logEvent('🌊 ENSO / El Niño — impulso de Dirac: ΔF ↑, sumidouro falha, estresse em x₃.', 'c-pitch');
+});
+document.getElementById('btn-reset').addEventListener('click', () => {
+  state = [0.15, 0.35, 0.90];
+  simTime = 0;
+  history = [];
+  phaseTrail = [];
+  wasTipped = false;
+  pendingImpulse = [0,0,0];
+  document.getElementById('u1').value = 0;
+  document.getElementById('u2').value = 0;
+  document.getElementById('u3').value = 0;
+  document.getElementById('noise').value = 0;
+  logEvent('↺ Simulação reiniciada — X₀ ≈ estado 2024.', '');
+});
+
+document.querySelectorAll('.speed-group .btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.speed-group .btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    speedSteps = parseInt(btn.dataset.speed) * 4;
+  });
+});
+
+// ── CLOCK ───────────────────────────────────────────
+function tick() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+}
+tick(); setInterval(tick, 1000);
+
+// ══════════════════════════════════════════════════════
+//  LOOP PRINCIPAL
+// ══════════════════════════════════════════════════════
+function loop() {
+  stepSim();
+  updateUI();
+  requestAnimationFrame(loop);
+}
+updateUI();
+loop();
+</script>
+</body>
+</html>
